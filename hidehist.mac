@@ -1,0 +1,147 @@
+$arg0 = getarg(0);
+$arg1 = getarg(1);
+
+jsmode "";
+js{(function(){
+
+//. init
+_common_lib();
+var 
+	fn_list = '%TEMP%\\hidehist.txt'.env_expand() ,
+	new_line = '\r\n' ,
+	lim_hist = 1000
+;
+//秀丸ファイラーパス
+var path_hidefile = actx.shell.RegRead(
+	'HKCU\\Software\\Hidemaruo\\HmFilerClassic\\Exe64'
+) || actx.shell.RegRead(
+	'HKCU\\Software\\Hidemaruo\\HmFilerClassic\\Exe32'
+);
+// var path_hidefile = 'c:\\program files\\HmFilerClassic\\HmFilerClassic.exe'
+if ( ! path_hidefile.is_file() ) {
+	message( '秀丸ファイラーの実行ファイルが見つかりません' );
+	endmacro();
+}
+
+//. filter term
+var filter_term = getarg(0)
+	|| input( '履歴を絞り込むフィルター文字列 (空白=フィルターなし)' )
+;
+if ( filter_term == '*' )
+	filter_term = '';
+
+//. main
+_make_data();
+
+//. makedata
+function _make_data() {
+	var data = [];
+//.. 履歴
+	for ( var num = 0; num < lim_hist; ++ num ) {
+		path = getpathhist( num );
+		if ( ! path ) break;
+		if ( filter_term && ! path.has( filter_term ) ) continue;
+		if ( ! path.is_folder() ) continue;
+		data.push( path );
+	}
+	for ( var num = 0; num < lim_hist; ++ num ) {
+		path = getfilehist( num );
+		if ( ! path ) break;
+		if ( filter_term && ! path.has( filter_term ) ) continue;
+		if ( ! path.is_file() ) continue;
+		data.push( path );
+	}
+
+//.. ファイル作成
+	obj_ado = new ActiveXObject( "ADODB.Stream" );
+	obj_ado.Type = 2;	// -1:Binary, 2:Text
+	obj_ado.Mode = 3;	// 読み取り/書き込みモード
+	obj_ado.charset = 'UTF-8';
+	obj_ado.LineSeparator = -1;  // ' -1 CrLf , 10 Lf , 13 Cr
+	obj_ado.Open();
+	obj_ado.WriteText( data.join( new_line ) + new_line, 0 );
+	obj_ado.SaveToFile( fn_list, 2 );
+
+//.. 秀丸ファイラーへ
+//	message ( r );
+	actx.shell.Run( path_hidefile.q()
+		+ ' /x ' + currentmacrofilename().replace( '.mac', '.js' ).q()
+		+ ' /a make!'
+		+ ( filter_term ? ' /a ' + filter_term.q() : '' )
+	);
+//	message( 'hoge' );
+}
+
+//.. _common_lib
+function _common_lib() {
+	actx = {
+		fs: new ActiveXObject( "Scripting.FileSystemObject" ) ,
+		shell: new ActiveXObject( "WScript.Shell" )
+	};
+
+	//- 親ディレクトリ
+	String.prototype.parent = function(){
+		return actx.fs.GetParentFolderName( this );
+	}
+
+	//- basename
+	String.prototype.basename = function(){
+		return actx.fs.GetBaseName( this );
+	}
+
+	//- 拡張子
+	String.prototype.ext = function(){
+		return actx.fs.GetExtensionName( this );
+	}
+
+	// is_file
+	String.prototype.is_file = function(){
+		return actx.fs.FileExists( this );
+	}
+
+	// is_folder
+	String.prototype.is_folder = function(){
+		return actx.fs.FolderExists( this );
+	}
+
+	//- / => \
+	String.prototype.yen = function(){
+		return this.replace( /\//g, '\\' );
+	}
+
+	//- quote
+	String.prototype.q = function( rep_to ){
+		return '"' + this.replace( /"/g, rep_to || '""' )  + '"'; //'"'ダブルクオート
+	}
+
+	//- has
+	String.prototype.has = function( needle ){
+		return this.indexOf( needle ) != -1;
+	}
+	//- rightstr
+	String.prototype.rightstr = function( num ) {
+		return this.substr( this.length - num );
+	}
+	//- add_wildcard
+	String.prototype.add_wildcard = function() {
+		return this.has( '*' ) ? this : '*' + this + '*' 
+	}
+	//- trim
+	String.prototype.trim = function() {
+		return this.replace( /^\s+|\s+$/g, '' );
+	}
+	//- path_expand
+	String.prototype.env_expand = function() {
+		return actx.shell.ExpandEnvironmentStrings( this );
+	}
+	String.prototype.repeat = function(num) {
+		for (var ret = ""; (this.length * num) > ret.length; ret += this);
+		return ret;
+	};
+}
+
+}());}
+
+//. 新規ウィンドウを開いて起動した場合は、閉じる
+if ( getarg(0) == "close!" || getarg(1) == "close!" ) exit;
+
